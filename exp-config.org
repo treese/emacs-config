@@ -39,3 +39,44 @@ function at a time to figure out which one is making a change."
                (throw 'found-it x)))
            org-ref-clean-bibtex-entry-hook))))))
 #+END_SRC
+** Tweak how BibTeX fields are filled                                 :blog:
+When BibTeX tries to fill a field to make it look nice, it will move an unfillable one, like a long URL, to the following line before giving up. For example,
+#+BEGIN_EXAMPLE
+@Online{Smith-2019-Stuff,
+  url      = {http:/example.com/a-really-long-url-name-probably-with-random-chars}
+}
+#+END_EXAMPLE
+
+gets filled as
+#+BEGIN_EXAMPLE
+@Online{Smith-2019-Stuff,
+  url          =
+                  {http:/example.com/a-really-long-url-name-probably-with-random-chars}
+}
+#+END_EXAMPLE
+
+This is sort of pointless, and looks ugly on the screen. It wouldn't happen if ~fill-column~ had a big value, since the helper code of ~fill-paragraph~ is actually doing the work. So we can advise ~bibtex-fill-field-bounds~ (which is the key function called along the way) to do just that.
+
+For the moment, I'm only checking if there are any spaces at all in the field value. We'll see if that's sufficient in practice.
+#+BEGIN_SRC emacs-lisp
+(defun wt/dont-fill-if-it-wont-work (orig-func bounds justify move)
+  "Don't fill a BibTex field if there aren't any spaces.
+If the field can't be broken up, there's no point in filling it.
+This is done by temporarily binding `fill-column` to a large
+number. This function is used to advise
+`bibtex-fill-field-bounds', calling ORIG-FUNC with BOUNDS, JUSTIFY, and
+MOVE."
+  (let* ((bounds-string (buffer-substring-no-properties
+                         (bibtex-start-of-field bounds)
+                         (bibtex-end-of-field bounds)))
+         (field-value (s-trim (cadr (s-split-up-to "=" bounds-string 1))))
+         (fill-column (if (string-match split-string-default-separators
+                                        field-value)
+                          fill-column
+                        1000)))
+    (message "Value: %s" field-value)
+    (funcall orig-func bounds justify move)))
+
+(advice-add 'bibtex-fill-field-bounds
+            :around #'wt/dont-fill-if-it-wont-work)
+#+END_SRC
