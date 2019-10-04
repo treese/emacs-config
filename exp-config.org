@@ -1,0 +1,41 @@
+#+TITLE: Experimental Emacs configuration
+#+PROPERTY: header-args :results none
+
+I like to keep some new parts of the configuration in a separate file so I can review them later before adding them to the permanent configuration. This is the file of experiments.
+
+* BibTeX configuration (experimental)
+** Figuring out where cleaning goes wrong                             :blog:
+Sometimes cleaning a BibTeX entry changes something in a way I don't like. Since there are 18 functions on ~org-ref-clean-bibtex-entry-hook~, coming from ~bibtex-mode~, ~org-ref~, and my own code, it's a little hard to tell what happened.
+
+This is a modified version of ~org-ref-clean-bibtex-entry~ that watches an entry for changes, and stops when one of them changes the entry. To use it, I usually edit the entry back to the way I wanted it, and run this with ~M-x~.
+
+#+BEGIN_SRC emacs-lisp
+(defun wt/trace-org-ref-clean-bibtex-entry ()
+  "Clean and replace the key in a bibtex entry.
+See functions in `org-ref-clean-bibtex-entry-hook'. Run one
+function at a time to figure out which one is making a change."
+  (interactive)
+  (let (orig)
+    (save-excursion
+      (save-restriction
+        (bibtex-narrow-to-entry)
+        (bibtex-beginning-of-entry)
+        (setq orig (buffer-substring-no-properties (point-min)
+                                                   (point-max)))
+        ;; run hooks. each of these operates on the entry with no arguments.
+        ;; this did not work like  i thought, it gives a symbolp error.
+        ;; (run-hooks org-ref-clean-bibtex-entry-hook)
+        (catch 'found-it
+          (mapc
+           (lambda (x)
+             (save-restriction
+               (save-excursion
+                 (funcall x)))
+             (unless
+                 (equal orig
+                        (buffer-substring-no-properties (point-min)
+                                                        (point-max)))
+               (message "Modified by %s" x)
+               (throw 'found-it x)))
+           org-ref-clean-bibtex-entry-hook))))))
+#+END_SRC
