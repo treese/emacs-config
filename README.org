@@ -1,0 +1,5 @@
+#+TITLE: Personal Emacs configuration
+
+Over time, I've gone back and forth over using ~org-babel~ for my Emacs configuration files. This is the beginning of another cycle, because I want to capture more of the "why" behind some of the more subtle, tricky, or complicated parts of my configuration.
+
+Right now, it's only a part of the configuration, because some of the older parts aren't appropriate for public posting. More will appear over time.
