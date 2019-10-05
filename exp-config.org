@@ -80,3 +80,81 @@ MOVE."
 (advice-add 'bibtex-fill-field-bounds
             :around #'wt/dont-fill-if-it-wont-work)
 #+END_SRC
+** Smarter orcb-% to fix percent signs in BibTeX entries              :blog:
+/Note: I ended up making a pull request for org-ref for this, so I may take it out soon./
+One of ~org-ref~'s cleaning functions is ~orcb-%~, which replaces percent signs in BibTeX entries with ~ \%~. That is, a space followed by an escaped percent sign for TeX.[[fn::Yes, a space. I would not have expected this, but apparently many people and some style guides prefer a space before a percent sign, as in "37 %".]] The replacement is very straightforward, but I have entries with several problems with it.
+1. Cleaning an entry again adds an extra " \" to already-escaped entries. I clean my entries a lot, sometimes in a big batch operation.
+2. Sometimes the percents are embedded as escape characters in URLs. Those get handled differently so they will print properly, so I don't want to escape them.
+3. If we get technical about it, the added space should probably be non-breaking, so the addition should be "~\%".
+4. Because the space depends on your desired style, it would be nice for the replacement string to be configurable.
+
+#+BEGIN_SRC emacs-lisp
+(defvar wt/orcb-%-replacement-string " \\\\%"
+  "Replacement for a naked % sign in cleaning a BibTeX entry.
+The replacement string should be escaped for use with
+`replace-match'. Compare to the default value. Common choices
+would be to omit the space or to replace the space with a ~ for a
+non-breaking space.")
+
+(defun wt/orcb-% ()
+  "Replace naked % with % in a bibtex entry.
+Except when it is already escaped or in a URL."
+  (save-restriction
+    (bibtex-narrow-to-entry)
+    (bibtex-beginning-of-entry)
+    (while (re-search-forward "\\([^\\]\\)%\\([^[:xdigit:]]\\)" nil t)
+      (replace-match (concat "\\1"
+                             wt/orcb-%-replacement-string
+                             "\\2")))))
+
+;; Overwrite the standard orcb-% so we don't have to modify the
+;; cleaning hook.
+(eval-after-load 'org-ref
+  (defalias 'orcb-% 'wt/orcb-%))
+#+END_SRC
+
+*** Test cases for ~wt/orcb-%~
+This is complicated enough that we should test some examples. Because ~orcb-%~ doesn't bother with any parsing of fields or anything, we can simplify the tests to simple strings. So here are some tests. Note that they are normally not tangled with the init file.
+#+BEGIN_SRC emacs-lisp :tangle no
+(defun with-orcb-test (&rest strings)
+  "Run a test for `wt/orcb-%'.
+STRINGS are inserted into a temp buffer. The function is called,
+and the buffer contents are returned. Strings will be separated
+by newlines."
+  (with-temp-buffer
+    (insert (mapconcat #'identity strings "\n"))
+    (wt/orcb-%)
+    (buffer-substring-no-properties (point-min)
+                                    (point-max))))
+
+(ert-deftest test-orcb-%-simple-escape ()
+  "Test a simple escape."
+  (should (s-contains? "{20 \\% off}"
+                       (with-orcb-test "@article{Foo,"
+                                       "field = {20% off}"
+                                       "}"))))
+
+(ert-deftest test-orcb-%-already-escaped ()
+  "Test a simple escape."
+  (should (s-contains? "{20 \\% off}"
+                       (with-orcb-test "@article{Foo,"
+                                       "field = {20 \\% off}"
+                                       "}"))))
+
+(ert-deftest test-orcb-%-not-in-url ()
+  "Test that % in a URL is not escaped."
+  (let ((url-string "https://example.org/a%20space%20there.html"))
+    (should
+     (s-contains? url-string
+                  (with-orcb-test "@article{Foo,"
+                                  (concat "field = {" url-string "}")
+                                  "}")))))
+
+(ert-deftest test-orcb-%-different-replacement ()
+  "Test a simple escape with a different replacement."
+  (let ((wt/orcb-%-replacement-string "\\\\%"))
+    (should (s-contains? "{20\\% off}"
+                         (with-orcb-test "@article{Foo,"
+                                         "field = {20% off}"
+                                         "}")))))
+#+END_SRC
