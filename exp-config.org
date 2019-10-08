@@ -109,7 +109,7 @@ Except when it is already escaped or in a URL."
 
 ;; Overwrite the standard orcb-% so we don't have to modify the
 ;; cleaning hook.
-(eval-after-load 'org-ref
+(with-eval-after-load 'org-ref
   (defalias 'orcb-% 'wt/orcb-%))
 #+END_SRC
 
